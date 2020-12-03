@@ -25,6 +25,29 @@ var getMentions = function (command, guild) {
     return mentions;
 }
 
+var massCreateTeams = async function (guild, prefix, startChar, endChar) {
+    for (var i = startChar; i <= endChar; i++) {
+	var name = prefix + String.fromCharCode(i);
+	var color = [Math.floor(Math.random()*256), Math.floor(Math.random()*256), Math.floor(Math.random()*256)];
+	while (color[0] + color[1] + color[2] < 64) {
+	    color = [Math.floor(Math.random()*256), Math.floor(Math.random()*256), Math.floor(Math.random()*256)];
+	}
+//	console.log(name + ' ' + color[0] + ' ' + color[1] + ' ' + color[2]);
+	var teamRole = await guild.roles.create({
+	    data: {
+		name,
+		color: color,
+		hoist: true,
+		mentionable: true,
+		position: 2
+	    }
+	});
+//	var huddleText = await createRoom(guild, name + ' Huddle', true);
+//	await add(teamRole, huddleText.parent);
+    }
+    return;
+}
+
 var createRoom = async function (guild, name, n, staffSpectatorInvisible) {
     var category = await guild.channels.create(name, {type: 'category'});
     await category.updateOverwrite(guild.roles.everyone, {
@@ -61,7 +84,7 @@ var confirm = async function (message, prompt, failCallback, successCallback) {
 	msg.react('👍');
 	msg.awaitReactions(function (reaction, user) {
 	    return reaction.emoji.name === '👍' && user.id === message.author.id;
-	}, {time: 6000}).then(function (collected) {
+	}, {time: 20000}).then(function (collected) {
 	    if (collected.size === 0) {
 		failCallback();
 	    } else {
@@ -93,8 +116,7 @@ var add = async function (role, to) {
     return;
 }
 
-client.on('message', async function(message) {
-    var content = message.content;
+var processCommand = async function(content, message) {
 	if (content.indexOf('*c') === 0 && hasRole(message.member, 'Control Room')) {
 		try {
 			var content = content.substr(content.indexOf(' ') + 1).trim();
@@ -130,12 +152,12 @@ client.on('message', async function(message) {
 			var roles = mentions.roles;
 			var role = roles[0];
 			var channels = mentions.channels;
+			confirm(message, 'Are you sure you want to add team ' + role.toString() + ' to the specified rooms? Confirm by reacting with \:thumbsup:.', function () {
+				message.channel.send('No confirmation was received. The addition is cancelled.');
+				}, function () {
 			channels.forEach((channel) =>  {
 				var to = channel.parent;
 				var voice_channel = to.children.find(c => c.type == 'voice');
-				confirm(message, 'Are you sure you want to add team ' + role.toString() + ' to room "' + to.name + '"? Confirm by reacting with \:thumbsup:.', function () {
-				message.channel.send('No confirmation was received. The addition is cancelled.');
-				}, function () {
 					add(role, voice_channel).then(function () {
 						message.channel.send('Team ' + role.toString() + ' has been added to room "' + voice_channel.name + '."');
 					}).catch(function (error) {
@@ -168,6 +190,49 @@ client.on('message', async function(message) {
 				message.channel.send("something you did was bad.");
 			}
 		}
+		if (content.indexOf('*m') === 0 && hasRole(message.member, 'Control Room')) {
+			try {
+				/*
+				  var spaceIndex = command.trim().indexOf(' ');
+				  if (spaceIndex === -1) {
+				  throw 'No range provided to .m, sending help dialog to channel.';
+				  }
+				  var range = command.substr(spaceIndex + 1).trim();
+				*/
+				var range = content.split(/\s+/g)[1];
+				confirm(message, 'Are you sure you want to mass create teams from the range ' + range + '? Confirm by reacting with \:thumbsup:.', function () {
+				message.channel.send('No confirmation was received. The creation is cancelled.');
+				}, function () {
+				var splitByBracket = range.split('[');
+				console.log(splitByBracket);
+				var prefix = splitByBracket[0];
+				console.log(prefix);
+				var splitByDash = splitByBracket[1].split(/(\-|\.\.\.)/g);
+				console.log(splitByDash)
+				var startChar = splitByDash[0].charCodeAt(0);
+				var endChar = Number(splitByDash[2].charCodeAt(0));
+				massCreateTeams(message.channel.guild, prefix, startChar, endChar).then(function () {
+					message.channel.send('The teams were created.');
+				}).catch(function (error) {
+					console.error(error);
+					message.channel.send('The teams could not be created.');
+					message.channel.send('You heard the old message.')
+				});
+				});
+			} catch (e) {
+				console.error(e);
+				message.channel.send('bleh.')
+			}
+		}
+}
+
+client.on('message', async function(message) {
+	var content = message.content;
+    contentSplit = content.split('\n');
+    for (var str of contentSplit) {
+	await processCommand(str, message);
+    }
+    return;
 });
 
 // THIS  MUST  BE  THIS  WAY
